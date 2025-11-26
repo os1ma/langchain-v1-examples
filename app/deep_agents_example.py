@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 
 class ActionRequest(BaseModel):
-    """人間のアクションを求めるときに画面に渡す情報を表すモデル"""
+    """人間のアクションを求めるときにフロントエンドに渡す情報を表すモデル"""
 
     name: str
     args: dict[str, Any]
@@ -36,9 +36,42 @@ class MyAgent:
             },
         )
 
+    def get_messages(self, thread_id: str) -> list[BaseMessage]:
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+        state_snapshot = self.agent.get_state(config=config)
+
+        if "messages" in state_snapshot.values:
+            return state_snapshot.values["messages"]  # type: ignore[no-any-return]
+        else:
+            return []
+
     def stream(self, message: str, thread_id: str) -> Iterator[AgentStreamChunk]:
-        stream_input = {"messages": [HumanMessage(content=message)]}
-        return self._stream(stream_input, thread_id)
+        if not self._is_interrupted(thread_id=thread_id):
+            # Human-in-the-Loop中ではない場合、通常の入力として扱う
+            stream_input = {"messages": [HumanMessage(content=message)]}
+            return self._stream(stream_input, thread_id)
+        else:
+            # Human-in-the-Loop中の場合、rejectとして扱う
+            message = f"Rejected. Human feedback: {message}"
+            decisions = [{"type": "reject", "message": message}]
+            command: Command[tuple[()]] = Command(resume={"decisions": decisions})
+            return self._stream(command, thread_id)
+
+    def approve(self, thread_id: str) -> Iterator[AgentStreamChunk]:
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+        state = self.agent.get_state(config=config)
+        interrupts = state.tasks[0].interrupts[0].value
+        interrupts_action_requests = interrupts["action_requests"]
+        interrupts_action_requests_count = len(interrupts_action_requests)
+
+        decisions = [{"type": "approve"}] * interrupts_action_requests_count
+        command: Command[tuple[()]] = Command(resume={"decisions": decisions})
+        return self._stream(command, thread_id)
+
+    def _is_interrupted(self, thread_id: str) -> bool:
+        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
+        state = self.agent.get_state(config=config)
+        return bool(state.next)
 
     def _stream(self, stream_input: Any, thread_id: str) -> Iterator[AgentStreamChunk]:
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
@@ -55,8 +88,8 @@ class MyAgent:
                 for m in messages:
                     yield m
 
-        state = self.agent.get_state(config=config)
-        if state.next:
+        if self._is_interrupted(thread_id=thread_id):
+            state = self.agent.get_state(config=config)
             interrupts = state.tasks[0].interrupts[0].value
             interrupts_action_requests = interrupts["action_requests"]
             action_requests = [
@@ -67,34 +100,3 @@ class MyAgent:
                 for action_request in interrupts_action_requests
             ]
             yield ActionRequests(action_requests=action_requests)
-
-    def approve(self, thread_id: str) -> Iterator[AgentStreamChunk]:
-        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-        state = self.agent.get_state(config=config)
-        interrupts = state.tasks[0].interrupts[0].value
-        interrupts_action_requests = interrupts["action_requests"]
-        interrupts_action_requests_count = len(interrupts_action_requests)
-
-        decisions = [{"type": "approve"}] * interrupts_action_requests_count
-        command: Command[tuple[()]] = Command(resume={"decisions": decisions})
-        return self._stream(command, thread_id)
-
-    def reject(self, feedback: str, thread_id: str) -> Iterator[AgentStreamChunk]:
-        message = f"Rejected. Human feedback: {feedback}"
-        decisions = [{"type": "reject", "message": message}]
-        command: Command[tuple[()]] = Command(resume={"decisions": decisions})
-        return self._stream(command, thread_id)
-
-    def get_messages(self, thread_id: str) -> list[BaseMessage]:
-        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-        state_snapshot = self.agent.get_state(config=config)
-
-        if "messages" in state_snapshot.values:
-            return state_snapshot.values["messages"]  # type: ignore[no-any-return]
-        else:
-            return []
-
-    def is_interrupted(self, thread_id: str) -> bool:
-        config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
-        state = self.agent.get_state(config=config)
-        return bool(state.next)

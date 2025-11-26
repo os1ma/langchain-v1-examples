@@ -40,12 +40,25 @@ def app() -> None:
             ui_state.new_thread()
             st.rerun()
 
-    st.title("Agent")
+    st.title("Deep Agents Example")
     st.write(f"thread_id: {ui_state.thread_id}")
 
     # 会話履歴を表示
     for m in ui_state.agent.get_messages(ui_state.thread_id):
         show_message(m)
+
+    # ユーザーの指示を受け付ける
+    human_input = st.chat_input()
+    if human_input:
+        ui_state.show_approve_button = False
+        show_message(HumanMessage(content=human_input))
+
+        with st.spinner():
+            for chunk in ui_state.agent.stream(human_input, ui_state.thread_id):
+                handle_agent_stream_chunk(chunk, ui_state)
+
+            # 再描画のためrerun
+            st.rerun()
 
     # 承認ボタンを表示
     if ui_state.show_approve_button:
@@ -56,25 +69,8 @@ def app() -> None:
             with st.spinner():
                 for chunk in ui_state.agent.approve(ui_state.thread_id):
                     handle_agent_stream_chunk(chunk, ui_state)
-            # 会話履歴を表示するためrerun
-            st.rerun()
 
-    # ユーザーの指示を受け付ける
-    human_input = st.chat_input()
-    if human_input:
-        show_message(HumanMessage(content=human_input))
-
-        with st.spinner():
-            if ui_state.show_approve_button:
-                ui_state.show_approve_button = False
-                for chunk in ui_state.agent.reject(human_input, ui_state.thread_id):
-                    handle_agent_stream_chunk(chunk, ui_state)
-
-            else:
-                for chunk in ui_state.agent.stream(human_input, ui_state.thread_id):
-                    handle_agent_stream_chunk(chunk, ui_state)
-
-            # 会話履歴を表示するためrerun
+            # 再描画のためrerun
             st.rerun()
 
 
