@@ -25,7 +25,7 @@ AgentStreamChunk = AIMessage | ToolMessage | ActionRequests
 """エージェントのストリーム出力のチャンク"""
 
 
-class MyAgent:
+class DeepAgentsExampleAgent:
     def __init__(self) -> None:
         self.agent = create_deep_agent(
             backend=FilesystemBackend(root_dir=".", virtual_mode=True),

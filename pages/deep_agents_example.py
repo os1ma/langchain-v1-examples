@@ -4,13 +4,17 @@ import streamlit as st
 from dotenv import load_dotenv
 from langchain.messages import HumanMessage
 
-from app.deep_agents_example import ActionRequests, AgentStreamChunk, MyAgent
+from app.deep_agents_example import (
+    ActionRequests,
+    AgentStreamChunk,
+    DeepAgentsExampleAgent,
+)
 from app.streamlit_components.show_message import show_message
 
 
 class UIState:
     def __init__(self) -> None:
-        self.agent = MyAgent()
+        self.agent = DeepAgentsExampleAgent()
         self.new_thread()
         self.show_approve_button = False
 
@@ -29,9 +33,9 @@ def app() -> None:
     load_dotenv(override=True)
 
     # UIStateを初期化
-    if "ui_state" not in st.session_state:
-        st.session_state.ui_state = UIState()
-    ui_state: UIState = st.session_state.ui_state
+    if "deep_agents_example_ui_state" not in st.session_state:
+        st.session_state.deep_agents_example_ui_state = UIState()
+    ui_state: UIState = st.session_state.deep_agents_example_ui_state
 
     with st.sidebar:
         # 新規スレッドボタン
